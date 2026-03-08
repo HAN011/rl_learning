@@ -119,6 +119,10 @@ class OnPolicyRunner:
             # )
             self.writer = SummaryWriter(log_dir=self.log_dir, flush_secs=10)
         if init_at_random_ep_len:
+            print(
+                "WARNING: init_at_random_ep_len randomizes episode_length_buf before rollout collection. "
+                "Episode-based training metrics are not valid model selection signals in this mode."
+            )
             self.env.episode_length_buf = torch.randint_like(
                 self.env.episode_length_buf, high=int(self.env.max_episode_length)
             )

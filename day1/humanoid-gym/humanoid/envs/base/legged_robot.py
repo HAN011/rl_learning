@@ -1060,7 +1060,7 @@ class LeggedRobot(BaseTask):
         dof_props_asset = self.gym.get_asset_dof_properties(robot_asset)
         if self.asset_type == "mjcf":
             dof_props_asset = self.fix_dof_props_asset(dof_props_asset)
-        #长度为20(miao_arm)
+        # Rigid body property count depends on the loaded asset.
         rigid_shape_props_asset = self.gym.get_asset_rigid_shape_properties(robot_asset)
         #print(self.asset_type)输出mjcf
         # save body names from the asset
@@ -1238,8 +1238,8 @@ class LeggedRobot(BaseTask):
 
         heights1 = self.height_samples[px, py]
         heights2 = self.height_samples[px+1, py]
-        heightXBotL = self.height_samples[px, py+1]
+        heights3 = self.height_samples[px, py+1]
         heights = torch.min(heights1, heights2)
-        heights = torch.min(heights, heightXBotL)
+        heights = torch.min(heights, heights3)
 
         return heights.view(self.num_envs, -1) * self.terrain.cfg.vertical_scale

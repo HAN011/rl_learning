@@ -50,9 +50,39 @@ VIEWER_CAMERA_POS = [2.2, -2.0, 1.4]
 VIEWER_CAMERA_LOOKAT = [0.0, 0.0, 0.9]
 
 
+def _resolve_curriculum_stage(args, env_cfg, train_cfg):
+    if not hasattr(env_cfg.env, "curriculum_stage"):
+        return None, None, None
+
+    if args.curriculum_stage is not None:
+        return int(args.curriculum_stage), "cli", None
+
+    experiment_name = args.experiment_name or train_cfg.runner.experiment_name
+    checkpoint = args.checkpoint if args.checkpoint is not None else -1
+    log_root = os.path.join(LEGGED_GYM_ROOT_DIR, "logs", experiment_name)
+    return helpers.infer_curriculum_stage_from_run(
+        log_root,
+        load_run=args.load_run,
+        checkpoint=checkpoint,
+    )
+
+
 def play(args):
     # 从任务注册表中获取环境配置和训练配置
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
+
+    stage, stage_source, inferred_load_path = _resolve_curriculum_stage(args, env_cfg, train_cfg)
+    if stage is not None:
+        env_cfg.env.curriculum_stage = stage
+        if inferred_load_path is not None:
+            print(f"Using curriculum_stage={stage} from {stage_source}: {inferred_load_path}")
+        else:
+            print(f"Using curriculum_stage={stage} from {stage_source}")
+    elif hasattr(env_cfg.env, "curriculum_stage"):
+        print(
+            f"Could not infer curriculum_stage from checkpoint metadata/path; "
+            f"using config default stage={env_cfg.env.curriculum_stage}."
+        )
     
     # 修改部分环境参数以便测试使用
     # override some parameters for testing
@@ -64,11 +94,13 @@ def play(args):
     env_cfg.terrain.num_cols = 5
     env_cfg.terrain.curriculum = False     
     env_cfg.terrain.max_init_terrain_level = 5
-    env_cfg.noise.add_noise = True
+    if args.task != "two_wheel_balancer_ppo":
+        env_cfg.noise.add_noise = True
     env_cfg.domain_rand.push_robots = False 
     env_cfg.domain_rand.joint_angle_noise = 0.
     env_cfg.noise.curriculum = False
-    env_cfg.noise.noise_level = 0.5
+    if args.task != "two_wheel_balancer_ppo":
+        env_cfg.noise.noise_level = 0.5
 
     # set a closer default viewer camera so the robot is visible in play mode
     env_cfg.viewer.pos = VIEWER_CAMERA_POS
@@ -86,7 +118,7 @@ def play(args):
     # load policy
     train_cfg.runner.resume = True
 
-    ppo_runner, train_cfg = task_registry.make_alg_runner(env=env, name=args.task, args=args, train_cfg=train_cfg)
+    ppo_runner, train_cfg = task_registry.make_alg_runner(env=env, name=None, args=args, train_cfg=train_cfg)
      # 获取推理用的策略网络，放到环境所在设备（CPU/GPU）
     
     policy = ppo_runner.get_inference_policy(device=env.device)
@@ -95,7 +127,10 @@ def play(args):
     if EXPORT_POLICY:
         path = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'policies')
         export_policy_as_jit(policy, path)
-        export_policy_to_onnx(policy, path)
+        try:
+            export_policy_to_onnx(policy, path)
+        except Exception as exc:
+            print(f"ONNX export skipped due to error: {exc}")
         print('Exported policy as jit script to: ', path)
      # 创建一个状态日志记录器，传入仿真步长dt
     logger = Logger(env.dt)
@@ -139,10 +174,13 @@ def play(args):
         #@print(obs)
         #print(obs.size()) #输出torch.Size([1, 660])
         if FIX_COMMAND:
-            env.commands[:, 0] = 0.6    # 1.0
-            env.commands[:, 1] = 0.
-            env.commands[:, 2] = 0.
-            env.commands[:, 3] = 0.
+            env.commands[:, 0] = 0.6
+            if env.commands.shape[1] > 1:
+                env.commands[:, 1] = 0.0
+            if env.commands.shape[1] > 2:
+                env.commands[:, 2] = 0.0
+            if env.commands.shape[1] > 3:
+                env.commands[:, 3] = 0.0
         if RECORD_DATA:
             qpos_np[i] = np.concatenate([
                 env.root_states[:, :3].cpu().numpy(),

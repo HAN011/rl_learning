@@ -31,12 +31,39 @@
 
 
 from humanoid.envs import *
-from humanoid.utils import get_args, task_registry
+from humanoid.utils import get_args, task_registry, helpers
 
 def train(args):
     env, env_cfg = task_registry.make_env(name=args.task, args=args)
     ppo_runner, train_cfg = task_registry.make_alg_runner(env=env, name=args.task, args=args)
-    ppo_runner.learn(num_learning_iterations=train_cfg.runner.max_iterations, init_at_random_ep_len=True)
+    curriculum_stage = helpers.get_curriculum_stage(env_cfg)
+    random_init_ep_len = bool(getattr(args, "random_init_ep_len", False))
+    if curriculum_stage is not None:
+        print(f"Training with curriculum_stage={curriculum_stage}")
+    if random_init_ep_len:
+        print(
+            "WARNING: random_init_ep_len biases episode-based training metrics "
+            "(for example timeout_ratio and episode_length). "
+            "Use humanoid/scripts/eval.py for checkpoint selection."
+        )
+
+    metadata_path = helpers.save_run_metadata(
+        ppo_runner.log_dir,
+        {
+            "task": args.task,
+            "curriculum_stage": curriculum_stage,
+            "experiment_name": train_cfg.runner.experiment_name,
+            "run_name": train_cfg.runner.run_name,
+            "random_init_ep_len": random_init_ep_len,
+        },
+    )
+    if metadata_path is not None:
+        print(f"Saved run metadata to: {metadata_path}")
+
+    ppo_runner.learn(
+        num_learning_iterations=train_cfg.runner.max_iterations,
+        init_at_random_ep_len=random_init_ep_len,
+    )
 
 if __name__ == '__main__':
     args = get_args()

@@ -117,7 +117,7 @@ class BaseTask():
             self.camera_handle = camera_handle
         else:
             # pass
-            #如果运行指令出现python scripts/train.py --task=miao_arm_ppo --run_name v1 --headless --num_envs 5，则运行这里
+            # Headless mode: still create an offscreen camera sensor for optional recording.
             camera_properties = gymapi.CameraProperties()
             camera_properties.width = 720
             camera_properties.height = 480
