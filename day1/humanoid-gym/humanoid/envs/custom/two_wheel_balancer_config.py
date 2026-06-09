@@ -256,3 +256,4 @@ class TwoWheelBalancerCfgPPO(LeggedRobotCfgPPO):
         save_interval = 200
         experiment_name = "two_wheel_balancer_ppo"
         run_name = ""
+        empirical_normalization = False

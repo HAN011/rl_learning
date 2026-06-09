@@ -75,6 +75,7 @@ class TwoWheelBalancerEnv(LeggedRobot):
             - float(gains.ref_kd_pos) * x_vel
         )
         u = torch.clip(u, -float(gains.ref_action_clip), float(gains.ref_action_clip))
+        u = -u
         self.ref_action[:, 0] = u
         self.ref_action[:, 1] = u
 

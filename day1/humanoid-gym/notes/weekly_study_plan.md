@@ -5,32 +5,68 @@
 你是一个 RL 初学者，已经完成了以下工作：
 - 在 humanoid-gym 上调通了 two_wheel_balancer 的基本训练流程
 - 理解了 URDF 物理定义、奖励设计、域随机化、课程训练的基本概念
-- 发现了 `init_at_random_ep_len` 对训练指标的污染问题
+- 发现了 `init_at_random_ep_len` 对训练指标的污染问题，已修复
 - 实现了 curriculum_stage 0-4 的配置切换机制
+- 建立了独立评估脚本 eval.py，用真实 reset 的 deterministic rollout 评估
+- **修复了 empirical_normalization 问题（现在二轮平衡车默认关闭）**
+- **大量超参数搜索（noise、residual RL、entropy、ns）全部 timeout_ratio=0.0**
+- **关键诊断：参考控制器几乎不改变倾倒轨迹，说明控制链路本身有问题**
 - 每天可投入 4-6 小时
 
 目标：一周后具备独立设计 RL 训练环境、调参、评估的能力，并对人形机器人 RL 有初步了解。
 
----
-
-## Day 1（周一）：修好 Stage 0，建立可信评估
-
-**上午（2h）- 理论**
-- 精读 PPO 算法：重点理解 clipped surrogate objective、GAE（Generalized Advantage Estimation）、value function loss
-- 推荐资源：Spinning Up 的 PPO 章节（https://spinningup.openai.com/en/latest/algorithms/ppo.html）
-- 对照项目代码 `humanoid/algo/ppo/ppo.py` 和 `rollout_storage.py`，把公式和代码对应起来
-
-**下午（3h）- 实操**
-- 用 Codex 写好 `eval.py` 的独立评估脚本（如果还没完善的话）
-- 跑一次诚实的 Stage 0 训练（禁用 `random_init_ep_len`），500 迭代
-- 每 50 迭代用 eval 脚本跑 1024 环境 deterministic rollout
-- 记录真实 timeout_ratio 曲线，确认 Stage 0 是否能收敛
-
-**产出**：Stage 0 的真实训练曲线 + 对 PPO 核心公式的笔记
+**当前 blocker**：控制动作无法产生预期的物理稳定效果，原因未定位。
+**不应该改奖励函数**：奖励设计不是问题，控制链路才是。
 
 ---
 
-## Day 2（周二）：奖励工程 + 超参数实验
+## Day 2（周二）：诊断控制链路——找到真正的物理 bug
+
+**核心目标**：确认"给两个轮子施加正力矩，小车会向前走"这个最基本的假设是否成立。
+
+**上午（2h）- 诊断脚本**
+
+让 Codex 写一个最小诊断脚本 `humanoid/scripts/diagnose_control.py`，用 Isaac Gym 跑单环境，
+**绕开 PPO 和奖励**，直接控制动作并观察物理响应：
+
+```python
+# 脚本逻辑（伪代码）
+for step in range(20):
+    # 阶段 1：零动作，记录自然倾倒速度
+    action = [0.0, 0.0]
+
+for step in range(20):
+    # 阶段 2：正力矩，观察 pitch/position/wheel_vel 变化
+    action = [+1.0, +1.0]  # 最大正力矩
+
+for step in range(20):
+    # 阶段 3：负力矩，观察反向效果
+    action = [-1.0, -1.0]
+
+# 每步打印：step, pitch, pitch_rate, x_pos, wheel_L_vel, wheel_R_vel, torque_L, torque_R
+```
+
+**关键验证点**：
+1. 正力矩时，左右轮角速度符号是否相同（同向旋转）？
+2. 正力矩时，x 坐标向哪个方向移动？
+3. 当小车向前倾（pitch > 0）时，正力矩是否能让 pitch 减小？
+
+**下午（3h）- 根据诊断结果修复**
+
+根据诊断输出，修复对应问题：
+
+| 诊断结果 | 修复方向 |
+|---|---|
+| 左右轮角速度符号相反 | 再次检查 URDF 轴向，或在代码里对左轮动作取反 |
+| 正力矩让 x 向后走 | 参考控制器 u 符号取反 |
+| pitch > 0 时正力矩不减小 pitch | 检查 `_compute_ref_actions` 中 pitch 的定义轴 |
+| 任何动作都几乎不改变物理状态 | 检查 `_compute_torques` 是否正确应用到仿真器 |
+
+**产出**：诊断报告 + 至少一个明确的物理 bug 被修复 + 参考控制器开环测试 mean_len > 2s
+
+---
+
+## Day 2（周二）：巩固 Stage 0 + 奖励工程实验
 
 **上午（2h）- 理论**
 - 学习奖励工程（Reward Shaping）的基本原则：
@@ -40,14 +76,14 @@
 - 回顾项目中 `_reward_upright`、`_reward_stability`、`_reward_energy` 等函数的设计意图
 
 **下午（3h）- 实操**
-- 做 3 组对比实验（每组跑 200 迭代即可）：
+- 如果 Day 1 的 Stage 0 已收敛（timeout_ratio > 50%），做 3 组奖励对比实验（每组 200 迭代）：
   1. 调大 `upright` 权重到 10.0，观察行为变化
   2. 去掉 `energy` 惩罚，看策略是否变得"暴力"
   3. 调大 `termination` 惩罚到 -200，看是否加速学习
-- 用 eval.py 对比每组的真实 timeout_ratio
-- 如果 Day 1 的 Stage 0 还没收敛，优先调参让它收敛
+- 如果 Day 1 的 Stage 0 未收敛，优先继续调参（学习率、探索噪声、gamma 等）
+- 所有评估用 eval.py
 
-**产出**：3 组实验对比表 + 对奖励权重影响的定性总结
+**产出**：3 组实验对比表 + 对奖励权重影响的定性总结（或 Stage 0 收敛方案）
 
 ---
 

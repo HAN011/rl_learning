@@ -38,6 +38,18 @@ def train(args):
     ppo_runner, train_cfg = task_registry.make_alg_runner(env=env, name=args.task, args=args)
     curriculum_stage = helpers.get_curriculum_stage(env_cfg)
     random_init_ep_len = bool(getattr(args, "random_init_ep_len", False))
+    empirical_normalization = bool(train_cfg.runner.empirical_normalization)
+    use_ref_actions = bool(getattr(env_cfg.env, "use_ref_actions", False))
+    residual_action_scale = float(getattr(env_cfg.env, "residual_action_scale", 0.0))
+    ref_cfg = {
+        "ref_kp_pitch": float(getattr(env_cfg.env, "ref_kp_pitch", 0.0)),
+        "ref_kd_pitch": float(getattr(env_cfg.env, "ref_kd_pitch", 0.0)),
+        "ref_ki_pitch": float(getattr(env_cfg.env, "ref_ki_pitch", 0.0)),
+        "ref_kp_pos": float(getattr(env_cfg.env, "ref_kp_pos", 0.0)),
+        "ref_kd_pos": float(getattr(env_cfg.env, "ref_kd_pos", 0.0)),
+        "ref_action_clip": float(getattr(env_cfg.env, "ref_action_clip", 0.0)),
+        "ref_pitch_i_clip": float(getattr(env_cfg.env, "ref_pitch_i_clip", 0.0)),
+    }
     if curriculum_stage is not None:
         print(f"Training with curriculum_stage={curriculum_stage}")
     if random_init_ep_len:
@@ -46,6 +58,10 @@ def train(args):
             "(for example timeout_ratio and episode_length). "
             "Use humanoid/scripts/eval.py for checkpoint selection."
         )
+    print(f"empirical_normalization={empirical_normalization}")
+    print(f"use_ref_actions={use_ref_actions}, residual_action_scale={residual_action_scale}")
+    if use_ref_actions:
+        print(f"ref_controller={ref_cfg}")
 
     metadata_path = helpers.save_run_metadata(
         ppo_runner.log_dir,
@@ -55,6 +71,10 @@ def train(args):
             "experiment_name": train_cfg.runner.experiment_name,
             "run_name": train_cfg.runner.run_name,
             "random_init_ep_len": random_init_ep_len,
+            "empirical_normalization": empirical_normalization,
+            "use_ref_actions": use_ref_actions,
+            "residual_action_scale": residual_action_scale,
+            **ref_cfg,
         },
     )
     if metadata_path is not None:

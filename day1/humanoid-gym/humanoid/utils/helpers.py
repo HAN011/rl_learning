@@ -276,6 +276,22 @@ def update_cfg_from_args(env_cfg, cfg_train, args):
     if env_cfg is not None:
         if getattr(args, "curriculum_stage", None) is not None and hasattr(env_cfg.env, "curriculum_stage"):
             env_cfg.env.curriculum_stage = args.curriculum_stage
+        if getattr(args, "use_ref_actions", False):
+            env_cfg.env.use_ref_actions = True
+        if getattr(args, "residual_action_scale", None) is not None:
+            env_cfg.env.residual_action_scale = args.residual_action_scale
+        for field in (
+            "ref_kp_pitch",
+            "ref_kd_pitch",
+            "ref_ki_pitch",
+            "ref_kp_pos",
+            "ref_kd_pos",
+            "ref_action_clip",
+            "ref_pitch_i_clip",
+        ):
+            value = getattr(args, field, None)
+            if value is not None and hasattr(env_cfg.env, field):
+                setattr(env_cfg.env, field, value)
         # num envs
         if args.num_envs is not None:
             env_cfg.env.num_envs = args.num_envs
@@ -311,6 +327,8 @@ def update_cfg_from_args(env_cfg, cfg_train, args):
             cfg_train.algorithm.gamma = args.gamma
         if getattr(args, "init_noise_std", None) is not None:
             cfg_train.policy.init_noise_std = args.init_noise_std
+        if getattr(args, "no_empirical_normalization", False):
+            cfg_train.runner.empirical_normalization = False
 
     return env_cfg, cfg_train
 
@@ -362,6 +380,12 @@ def get_args(extra_parameters=None):
             "help": "Randomize initial episode lengths before PPO rollouts.",
         },
         {
+            "name": "--no_empirical_normalization",
+            "action": "store_true",
+            "default": False,
+            "help": "Disable empirical observation normalization during training and inference.",
+        },
+        {
             "name": "--horovod",
             "action": "store_true",
             "default": False,
@@ -402,6 +426,52 @@ def get_args(extra_parameters=None):
             "name": "--curriculum_stage",
             "type": int,
             "help": "Curriculum stage for env randomization. Overrides config file if provided.",
+        },
+        {
+            "name": "--use_ref_actions",
+            "action": "store_true",
+            "default": False,
+            "help": "Enable reference-controller actions and learn residual actions on top.",
+        },
+        {
+            "name": "--residual_action_scale",
+            "type": float,
+            "help": "Residual action scale when --use_ref_actions is enabled. Overrides config file if provided.",
+        },
+        {
+            "name": "--ref_kp_pitch",
+            "type": float,
+            "help": "Reference-controller proportional gain on pitch. Overrides config file if provided.",
+        },
+        {
+            "name": "--ref_kd_pitch",
+            "type": float,
+            "help": "Reference-controller derivative gain on pitch rate. Overrides config file if provided.",
+        },
+        {
+            "name": "--ref_ki_pitch",
+            "type": float,
+            "help": "Reference-controller integral gain on pitch. Overrides config file if provided.",
+        },
+        {
+            "name": "--ref_kp_pos",
+            "type": float,
+            "help": "Reference-controller proportional gain on x position. Overrides config file if provided.",
+        },
+        {
+            "name": "--ref_kd_pos",
+            "type": float,
+            "help": "Reference-controller derivative gain on x velocity. Overrides config file if provided.",
+        },
+        {
+            "name": "--ref_action_clip",
+            "type": float,
+            "help": "Reference-controller action clip before residual combination. Overrides config file if provided.",
+        },
+        {
+            "name": "--ref_pitch_i_clip",
+            "type": float,
+            "help": "Reference-controller pitch integral clip. Overrides config file if provided.",
         },
         {
             "name": "--learning_rate",
