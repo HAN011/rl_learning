@@ -1,0 +1,6 @@
+[submodule "ex3/DDPG_Torcs_PyTorch"]
+	path = ex3/DDPG_Torcs_PyTorch
+	url = git@github.com:HAN011/machine-learning.git
+[submodule "ex3/gym_torcs"]
+	path = ex3/gym_torcs
+	url = https://github.com/ugo-nama-kun/gym_torcs.git
