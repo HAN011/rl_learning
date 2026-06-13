@@ -67,7 +67,7 @@
       <attnum name="fovy-9-0" val="9"/>
       <attnum name="enable mirror" val="0"/>
       <attstr name="current driver" val="scr_server 1"/>
-      <attnum name="camera" val="1"/>
+      <attnum name="camera" val="0"/>
       <attnum name="camera head list" val="0"/>
       <attnum name="fovy-0-0" val="40"/>
       <attnum name="fovy-0-1" val="40"/>
